@@ -12,7 +12,7 @@ Animate a still image into a cinematic video with synchronized audio using ByteD
 This skill uses an asynchronous queue. There are two scripts:
 
 1. **`submit_video.py`** — uploads the image, submits the job, prints a `request_id`
-2. **`poll.py`** — checks status by `request_id`, returns the CDN video URL when complete
+2. **`poll.py`** — checks status by `request_id`, returns the CDN video URL when complete. There is also fallback poll.sh if poll.py doesn't work
 
 ### Step 1: Save the input image (if received from Telegram or chat)
 
@@ -30,6 +30,10 @@ If the user provides a path to an existing file on disk, use that path directly 
 ### Step 2: Submit the request
 
 Run the submit script using the absolute path (do NOT cd to the skill directory first):
+If uv doesn't exist, please install it using
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ```bash
 REQUEST_ID=$(uv run skills/fal-ai-video/scripts/submit_video.py \
@@ -52,6 +56,10 @@ Poll for the result using the request_id:
 VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.py \
   --request-id "$REQUEST_ID" \
   [--api-key KEY])
+```
+
+```bash
+./skills/fal-ai-video/scripts/poll.sh --request-id "$REQUEST_ID"
 ```
 
 Exit codes:
