@@ -12,7 +12,7 @@ Animate a still image into a cinematic video with synchronized audio using ByteD
 This skill uses an asynchronous queue. There are two scripts:
 
 1. **`submit_video.py`** — uploads the image, submits the job, prints a `request_id`
-2. **`poll.py`** — checks status by `request_id`, returns the CDN video URL when complete. There is also fallback poll.sh if poll.py doesn't work
+2. **`poll.sh`** — checks status by `request_id`, returns the CDN video URL when complete.
 
 ### Step 1: Save the input image (if received from Telegram or chat)
 
@@ -68,7 +68,7 @@ The `request_id` is printed to stdout. Informational messages go to stderr.
 Poll for the result using the request_id:
 
 ```bash
-VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.py \
+VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh \
   --request-id "$REQUEST_ID" \
   [--api-key KEY])
 ```
@@ -95,7 +95,7 @@ Video generation takes 1–5 minutes depending on duration and resolution. Do no
 # Example polling loop
 sleep 60
 for i in $(seq 1 15); do
-  VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.py --request-id "$REQUEST_ID" 2>/dev/null)
+  VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh --request-id "$REQUEST_ID" 2>/dev/null)
   if [ $? -eq 0 ]; then
     echo "Video ready: $VIDEO_URL"
     break
@@ -194,7 +194,7 @@ Examples of bad prompts (too static):
 ## Output
 
 - `submit_video.py` prints the `request_id` to stdout
-- `poll.py` prints the video CDN URL to stdout when complete
+- `poll.sh` prints the video CDN URL to stdout when complete
 - Share the CDN URL directly with the user — it is publicly accessible
 - Do not attempt to download the video unless the user asks
 
@@ -211,7 +211,7 @@ REQUEST_ID=$(uv run skills/fal-ai-video/scripts/submit_video.py \
 
 **Check result:**
 ```bash
-VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.py \
+VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh \
   --request-id "$REQUEST_ID")
 ```
 
@@ -225,7 +225,7 @@ echo "Submitted. Waiting for result..."
 sleep 60
 
 for i in $(seq 1 15); do
-  VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.py \
+  VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh \
     --request-id "$REQUEST_ID" 2>/dev/null)
   if [ $? -eq 0 ]; then
     echo "Video ready: $VIDEO_URL"
