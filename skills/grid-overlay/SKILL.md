@@ -13,6 +13,10 @@ One script does everything: `grid_overlay.py` — loads the image, draws the gri
 
 ### Step 1: Save the input image (if received from Telegram or chat)
 
+First ask user to confirm if there already is a grid overlay in the image they provided. If they say there already is a grid, please terminate and no need to run this skill.
+
+### Step 2: Save the input image (if received from Telegram or chat)
+
 If the user sends an image in chat (e.g. Telegram), save it to disk first before calling the script. Save to the user's current working directory with a descriptive filename:
 
 ```bash
@@ -22,7 +26,7 @@ SAVE_PATH="$(pwd)/yyyy-mm-dd-hh-mm-ss-input.png"
 
 If the user provides a path to an existing file on disk, use that path directly — do not re-save.
 
-### Step 2: Run the script
+### Step 3: Run the script
 
 Run using the absolute path (do NOT cd to the skill directory first).
 If `uv` doesn't exist, install it first:

@@ -27,7 +27,22 @@ SAVE_PATH="$(pwd)/yyyy-mm-dd-hh-mm-ss-input.png"
 
 If the user provides a path to an existing file on disk, use that path directly — do not re-save.
 
-### Step 2: Submit the request
+### Step 2: Apply grid overlay
+
+Invoke the `grid-overlay` skill on the saved image. The skill will first ask the user to confirm whether the image already has a grid overlay:
+
+- **If the user says the image already has a grid overlay:** skip running the script and use the original saved image path as `IMAGE_PATH`.
+- **If the grid overlay script is run:** capture the output path printed to stdout and use that as `IMAGE_PATH` for the submit step.
+
+```bash
+# If grid overlay was run:
+IMAGE_PATH=$(uv run skills/grid-overlay/scripts/grid_overlay.py --image "/path/to/saved/image.png")
+
+# If image already has a grid overlay:
+IMAGE_PATH="/path/to/saved/image.png"
+```
+
+### Step 3: Submit the request
 
 Run the submit script using the absolute path (do NOT cd to the skill directory first):
 If uv doesn't exist, please install it using
@@ -38,7 +53,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```bash
 REQUEST_ID=$(uv run skills/fal-ai-video/scripts/submit_video.py \
   --prompt "motion description" \
-  --image "/path/to/saved/image.png" \
+  --image "$IMAGE_PATH" \
   [--resolution 480p|720p] \
   [--duration auto|4-15] \
   [--api-key KEY])
@@ -48,7 +63,7 @@ The `request_id` is printed to stdout. Informational messages go to stderr.
 
 **Important:** Capture the `request_id` — it is required to retrieve the result.
 
-### Step 3: Get the result
+### Step 4: Get the result
 
 Poll for the result using the request_id:
 
