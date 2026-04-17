@@ -7,7 +7,7 @@
 # ]
 # ///
 """
-Submit an image-to-video request to fal.ai Seedance 2.0 (async queue).
+Submit a reference-to-video request to fal.ai Seedance 2.0 (async queue).
 
 Usage:
     uv run submit_video.py --prompt "motion description" --image "path/to/image.png" [--resolution 480p|720p] [--duration auto|4-15]
@@ -19,7 +19,7 @@ import argparse
 import os
 import sys
 
-FAL_MODEL_ID = "bytedance/seedance-2.0/image-to-video"
+FAL_MODEL_ID = "bytedance/seedance-2.0/reference-to-video"
 
 
 def get_api_key(provided_key: str | None) -> str | None:
@@ -31,13 +31,13 @@ def get_api_key(provided_key: str | None) -> str | None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Submit image-to-video request to Seedance 2.0 (fal.ai)"
+        description="Submit reference-to-video request to Seedance 2.0 (fal.ai)"
     )
     parser.add_argument(
         "--prompt", "-p", required=True, help="Motion/action description for the video"
     )
     parser.add_argument(
-        "--image", "-i", required=True, help="Input image path (local file) to animate"
+        "--image", "-i", required=True, help="Reference image path (local file) — uploaded and passed as image_urls to reference-to-video model"
     )
     parser.add_argument(
         "--resolution",
@@ -50,6 +50,7 @@ def main():
         "--duration",
         "-d",
         choices=[
+            "auto",
             "4",
             "5",
             "6",
@@ -64,7 +65,7 @@ def main():
             "15",
         ],
         default="5",
-        help="Video duration in seconds (default: auto)",
+        help="Video duration in seconds, or 'auto' (default: 5)",
     )
     parser.add_argument(
         "--api-key", "-k", help="fal.ai API key (overrides FAL_KEY env var)"
@@ -104,7 +105,7 @@ def main():
     # Build request arguments
     arguments = {
         "prompt": args.prompt,
-        "image_url": image_url,
+        "image_urls": [image_url],
         "resolution": args.resolution,
         "duration": args.duration,
     }

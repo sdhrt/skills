@@ -1,11 +1,11 @@
 ---
 name: fal-ai-video
-description: Generate video from a still image using Seedance 2.0 (fal.ai). Use for image-to-video, animate image, make video from photo requests. Async two-step workflow: submit then poll for result. Supports Telegram image input.
+description: Generate video from reference images using Seedance 2.0 reference-to-video model (fal.ai). Use for animating photos, reference-to-video generation, make video from image requests. Async two-step workflow: submit then poll for result. Supports Telegram image input.
 ---
 
-# Seedance 2.0 Image-to-Video
+# Seedance 2.0 Reference-to-Video
 
-Animate a still image into a cinematic video with synchronized audio using ByteDance's Seedance 2.0 via fal.ai.
+Animate one or more reference images into a cinematic video using ByteDance's Seedance 2.0 **reference-to-video** model via fal.ai. This is NOT image-to-video — it uses the reference-to-video endpoint (`bytedance/seedance-2.0/reference-to-video`) which accepts `image_urls` as an array.
 
 ## Workflow (two-step async)
 
@@ -68,13 +68,9 @@ The `request_id` is printed to stdout. Informational messages go to stderr.
 Poll for the result using the request_id:
 
 ```bash
-VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh \
+VIDEO_URL=$(bash skills/fal-ai-video/scripts/poll.sh \
   --request-id "$REQUEST_ID" \
   [--api-key KEY])
-```
-
-```bash
-./skills/fal-ai-video/scripts/poll.sh --request-id "$REQUEST_ID"
 ```
 
 Exit codes:
@@ -95,7 +91,7 @@ Video generation takes 1–5 minutes depending on duration and resolution. Do no
 # Example polling loop
 sleep 60
 for i in $(seq 1 15); do
-  VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh --request-id "$REQUEST_ID" 2>/dev/null)
+  VIDEO_URL=$(bash skills/fal-ai-video/scripts/poll.sh --request-id "$REQUEST_ID" 2>/dev/null)
   if [ $? -eq 0 ]; then
     echo "Video ready: $VIDEO_URL"
     break
@@ -118,11 +114,11 @@ The submit script handles uploading the local file to fal.ai CDN internally — 
 
 ### Required
 - **`--prompt`** (`-p`): Describes the desired motion and action. Be specific about movement, camera angles, and transitions.
-- **`--image`** (`-i`): Local path to the input image file. Supported formats: JPEG, PNG, WebP.
+- **`--image`** (`-i`): Local path to the reference image file. Supported formats: JPEG, PNG, WebP. Uploaded to fal CDN and passed as `image_urls` to the reference-to-video model.
 
 ### Optional
 - **`--resolution`** (`-r`): `480p` (faster) or `720p` (default, better quality)
-- **`--duration`** (`-d`): `auto` (default, model decides) or `4` through `15` (seconds)
+- **`--duration`** (`-d`): `4`–`15` seconds, or `auto` (model decides). Default: `5`
 - **`--api-key`** (`-k`): fal.ai API key (overrides `FAL_KEY` env var)
 
 ## Resolution Mapping
@@ -135,7 +131,7 @@ Map user requests to the `--resolution` parameter:
 ## Duration Mapping
 
 Map user requests to the `--duration` parameter:
-- No mention of duration → `auto`
+- No mention of duration → `5` (default)
 - "short", "quick clip", "brief" → `4` or `5`
 - "medium" → `8` or `10`
 - "long", "extended" → `12` to `15`
@@ -211,7 +207,7 @@ REQUEST_ID=$(uv run skills/fal-ai-video/scripts/submit_video.py \
 
 **Check result:**
 ```bash
-VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh \
+VIDEO_URL=$(bash skills/fal-ai-video/scripts/poll.sh \
   --request-id "$REQUEST_ID")
 ```
 
@@ -225,7 +221,7 @@ echo "Submitted. Waiting for result..."
 sleep 60
 
 for i in $(seq 1 15); do
-  VIDEO_URL=$(uv run skills/fal-ai-video/scripts/poll.sh \
+  VIDEO_URL=$(bash skills/fal-ai-video/scripts/poll.sh \
     --request-id "$REQUEST_ID" 2>/dev/null)
   if [ $? -eq 0 ]; then
     echo "Video ready: $VIDEO_URL"

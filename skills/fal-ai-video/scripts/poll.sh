@@ -2,8 +2,13 @@
 set -euo pipefail
 
 # FAL AI Poll Script
-# Fallback script for checking Seedance 2.0 video generation status
+# Checks status and fetches result for a Seedance 2.0 reference-to-video request.
 # Usage: ./poll.sh --request-id <request-id> [--api-key <key>]
+#
+# Exit codes:
+#   0 - completed, video CDN URL printed to stdout
+#   1 - error (auth, content policy, unexpected)
+#   2 - not ready yet (IN_QUEUE or IN_PROGRESS)
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -14,14 +19,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Get API key from env if not provided
 if [[ -z "${API_KEY:-}" ]]; then
-  if [[ -n "${FAL_KEY:-}" ]]; then
-    API_KEY="$FAL_KEY"
-  else
-    echo "Error: No API key provided. Set FAL_KEY env var or use --api-key" >&2
-    exit 1
-  fi
+  API_KEY="${FAL_KEY:-}"
+fi
+
+if [[ -z "${API_KEY:-}" ]]; then
+  echo "Error: No API key provided. Set FAL_KEY env var or use --api-key" >&2
+  exit 1
 fi
 
 if [[ -z "${REQUEST_ID:-}" ]]; then
@@ -29,65 +33,87 @@ if [[ -z "${REQUEST_ID:-}" ]]; then
   exit 1
 fi
 
-FAL_MODEL_ID="bytedance/seedance-2.0"
-FAL_QUEUE_BASE="https://queue.fal.run"
+# Polling uses the base model path (no endpoint suffix)
+BASE_URL="https://queue.fal.run/bytedance/seedance-2.0/requests/$REQUEST_ID"
+STATUS_URL="$BASE_URL/status"
 
 echo "Checking status for request: $REQUEST_ID" >&2
 
-# Function to make API calls with error handling
-fal_request() {
-  local url="$1"
-  local method="${2:-GET}"
+# Step 1: GET status
+status_response=$(curl -s --max-time 30 \
+  -H "Authorization: Key $API_KEY" \
+  -H "Content-Type: application/json" \
+  "$STATUS_URL" 2>/dev/null) || true
 
-  # Use curl with -f to fail on HTTP errors >400
-  curl -s -X "$method" \
-    -H "Authorization: Key $API_KEY" \
-    -H "Content-Type: application/json" \
-    "$url" 2>/dev/null || true
-}
+if [[ -z "$status_response" ]]; then
+  echo "Error: Empty response from status endpoint (network issue?)" >&2
+  exit 2
+fi
 
-# Try GET on the result endpoint
-echo "Checking result endpoint..." >&2
-response=$(fal_request "$FAL_QUEUE_BASE/$FAL_MODEL_ID/requests/$REQUEST_ID" "GET")
+status=$(echo "$status_response" | python3 -c "import json, sys; print(json.load(sys.stdin).get('status', 'UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+echo "Status: $status" >&2
 
-# Check if response contains error details
-if echo "$response" | python3 -c "import json, sys; data=json.load(sys.stdin); exit(0 if 'detail' in data else 1)" 2>/dev/null; then
-  # Extract error detail
-  error_detail=$(echo "$response" | python3 -c "
+case "$status" in
+  "IN_QUEUE")
+    queue_pos=$(echo "$status_response" | python3 -c "import json, sys; print(json.load(sys.stdin).get('queue_position', 'unknown'))" 2>/dev/null || echo "unknown")
+    echo "Queue position: $queue_pos" >&2
+    exit 2
+    ;;
+  "IN_PROGRESS")
+    exit 2
+    ;;
+  "COMPLETED")
+    ;;
+  "UNKNOWN")
+    echo "Could not parse status response:" >&2
+    echo "$status_response" >&2
+    exit 2
+    ;;
+  *)
+    echo "Unexpected status: $status" >&2
+    echo "$status_response" >&2
+    exit 1
+    ;;
+esac
+
+# Step 2: COMPLETED — fetch result
+echo "Fetching result..." >&2
+result=$(curl -s --max-time 30 \
+  -H "Authorization: Key $API_KEY" \
+  "$BASE_URL" 2>/dev/null) || true
+
+if [[ -z "$result" ]]; then
+  echo "Error: Empty response from result endpoint (network issue?)" >&2
+  exit 2
+fi
+
+# Check for errors in result
+if echo "$result" | python3 -c "import json, sys; data=json.load(sys.stdin); exit(0 if 'detail' in data else 1)" 2>/dev/null; then
+  error_detail=$(echo "$result" | python3 -c "
 import json, sys
-try:
-    data = json.load(sys.stdin)
-    detail = data.get('detail')
-    if isinstance(detail, list) and len(detail) > 0:
-        error_obj = detail[0]
-        msg = error_obj.get('msg', str(error_obj))
-        error_type = error_obj.get('type', '')
-        if 'content_policy_violation' in str(error_type):
-            print('CONTENT_POLICY_VIOLATION: ' + msg)
-        else:
-            print('ERROR: ' + msg)
-    elif isinstance(detail, str):
-        print('ERROR: ' + detail)
-    else:
-        print('ERROR: ' + str(detail))
-except Exception as e:
-    print('ERROR: Failed to parse error - ' + str(e))
+data = json.load(sys.stdin)
+detail = data.get('detail')
+if isinstance(detail, list) and detail:
+    e = detail[0]
+    t = e.get('type', '')
+    m = e.get('msg', str(e))
+    print(('CONTENT_POLICY_VIOLATION: ' if 'content_policy_violation' in t else 'ERROR: ') + m)
+elif isinstance(detail, str):
+    print('ERROR: ' + detail)
+else:
+    print('ERROR: ' + str(detail))
 " 2>/dev/null || echo "ERROR: Unknown error")
-
-  echo "❌ Request failed: $error_detail" >&2
+  echo "❌ $error_detail" >&2
   exit 1
 fi
 
-# Check if response contains video URL (success case)
-video_url=$(echo "$response" | python3 -c "
+# Extract video URL
+video_url=$(echo "$result" | python3 -c "
 import json, sys
-try:
-    data = json.load(sys.stdin)
-    video_url = data.get('video', {}).get('url') or data.get('output', {}).get('video_url') or data.get('url')
-    if video_url:
-        print(video_url)
-except:
-    pass
+data = json.load(sys.stdin)
+url = data.get('video', {}).get('url') or data.get('output', {}).get('video_url') or data.get('url')
+if url:
+    print(url)
 " 2>/dev/null)
 
 if [[ -n "$video_url" ]]; then
@@ -96,51 +122,6 @@ if [[ -n "$video_url" ]]; then
   exit 0
 fi
 
-# If neither error nor success, check queue status with POST
-echo "Checking queue status with POST..." >&2
-post_response=$(curl -s -X POST \
-  -H "Authorization: Key $API_KEY" \
-  -H "Content-Type: application/json" \
-  "$FAL_QUEUE_BASE/$FAL_MODEL_ID/image-to-video/requests/$REQUEST_ID" 2>/dev/null || echo "{}")
-
-if [[ "$post_response" != "{}" ]]; then
-  status=$(echo "$post_response" | python3 -c "import json, sys; data=json.load(sys.stdin); print(data.get('status', 'UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
-
-  case "$status" in
-    "IN_QUEUE")
-      queue_pos=$(echo "$post_response" | python3 -c "import json, sys; data=json.load(sys.stdin); print(data.get('queue_position', 'unknown'))" 2>/dev/null || echo "unknown")
-      echo "Queue status: IN_QUEUE (position: $queue_pos)" >&2
-      exit 2
-      ;;
-    "IN_PROGRESS")
-      echo "Status: IN_PROGRESS" >&2
-      exit 2
-      ;;
-    "COMPLETED")
-      # Try to extract URL from POST response
-      video_url=$(echo "$post_response" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    video_url = data.get('video', {}).get('url') or data.get('output', {}).get('video_url') or data.get('url')
-    if video_url:
-        print(video_url)
-except:
-    pass
-" 2>/dev/null)
-
-      if [[ -n "$video_url" ]]; then
-        echo "✅ Video ready!" >&2
-        echo "$video_url"
-        exit 0
-      fi
-      exit 2
-      ;;
-    *)
-      echo "Unknown queue status: $status" >&2
-      exit 2
-      ;;
-  esac
-else
-  echo "Failed to check queue status" >&2
-  exit 2
+echo "Error: No video URL in completed response" >&2
+echo "$result" >&2
+exit 1
