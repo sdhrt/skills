@@ -1,0 +1,6 @@
+*
+!.gitignore
+!README.md
+!skills/
+!skills/**
+**/.DS_Store
